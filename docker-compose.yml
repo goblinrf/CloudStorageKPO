@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  db:
+    image: postgres:16
+    container_name: postgres-cloud-storage-metadata
+    environment:
+      POSTGRES_DB: server_cloud_storage_metadata
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+volumes:
+  pg_data:

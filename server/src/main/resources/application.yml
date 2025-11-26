@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/server_cloud_storage_metadata
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  security:
+    session:
+      creation-policy: IF_REQUIRED
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+      spring.jpa.properties.hibernate.ejb.entitymanager_factory_interface: jakarta.persistence.EntityManagerFactory
+
+  liquibase:
+    enabled: true
+server:
+  port: 8081
+
+logging:
+  level:
+    org.springframework.security: DEBUG
