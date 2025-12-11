@@ -36,7 +36,7 @@ public class SecurityConfig {
                         // Страницы, доступные без авторизации
                         .requestMatchers("/login.html", "/register.html").permitAll()
                         .requestMatchers("/login", "/logout").permitAll()
-                        .requestMatchers("/api/auth/register", "/api/auth/login","/api/auth/me" ).permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login","/api/auth/logout","/api/auth/me" ).permitAll()
 
                         // Всё API — только авторизованным
                         .requestMatchers("/api/**").authenticated()
@@ -58,14 +58,11 @@ public class SecurityConfig {
                         .permitAll())
 
                 // --- ЛОГАУТ ---
-                .logout(logout -> logout
-                        .logoutUrl("/api/auth/logout")
-                        .logoutSuccessHandler((request, response, auth) -> {
+                .logout(logout -> logout.logoutUrl("/logout")
+                        .logoutSuccessHandler((request, response, authentication) -> {
                             response.setStatus(HttpServletResponse.SC_OK);
                         })
-                        .permitAll()
-                )
-
+                        .permitAll())
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint((request, response, authException) ->
                                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED)

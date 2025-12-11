@@ -5,12 +5,8 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class UsersDto {
+public class FolderDto {
     private Long id;
-    private String username;
-    private String rawPassword;
-
-    public UsersDto() {
-    }
+    private String name;
+    private Long parentId;
 }
-

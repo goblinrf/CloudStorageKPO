@@ -1,28 +1,27 @@
 package cloudStorage.server.db.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "files")
+@Table(name = "folders")
 @Getter
 @Setter
-public class File {
+public class Folder {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String fileName;
-    private String s3Key;
-    private long size;
-    private String contentType;
+    private String name;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    private User user;
+    private User owner;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    private Folder folder;
-
+    @JoinColumn(name = "parent_id")
+    @JsonIgnore
+    private Folder parent;
 }

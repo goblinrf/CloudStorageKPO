@@ -4,6 +4,7 @@ spring:
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
+
   security:
     session:
       creation-policy: IF_REQUIRED
@@ -19,9 +20,17 @@ spring:
 
   liquibase:
     enabled: true
+
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
 server:
   port: 8081
 
 logging:
   level:
     org.springframework.security: DEBUG
+    com.example: DEBUG
+
