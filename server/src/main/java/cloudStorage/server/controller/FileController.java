@@ -1,11 +1,11 @@
 package cloudStorage.server.controller;
 
-import cloudStorage.server.db.entity.File;
 import cloudStorage.server.model.FileDto;
 import cloudStorage.server.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -27,16 +27,19 @@ public class FileController {
             @RequestParam(value = "folderId", required = false) Long folderId,
             Principal principal) {
 
+        // Если folderId указан, проверяем принадлежность
+        if (folderId != null && !fileService.isFolderOwner(folderId, principal.getName())) {
+            throw new AccessDeniedException("Нет доступа к указанной папке");
+        }
+
         var savedFile = fileService.uploadFile(file, folderId, principal.getName());
         return ResponseEntity.ok(fileService.toDto(savedFile));
     }
 
     @GetMapping("/{id}/download")
     public ResponseEntity<byte[]> downloadFile(@PathVariable Long id, Principal principal) {
-
-        var entity = fileService.getFileEntity(id, principal.getName());
+        var entity = fileService.getFileEntity(id, principal.getName()); // проверка владельца внутри
         byte[] bytes = fileService.download(id, principal.getName());
-
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + entity.getFileName() + "\"")
@@ -45,7 +48,7 @@ public class FileController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<String> deleteFile(@PathVariable Long id, Principal principal) {
-        fileService.deleteFile(id, principal.getName());
+        fileService.deleteFile(id, principal.getName()); // проверка владельца
         return ResponseEntity.ok("Удалено");
     }
 
@@ -53,6 +56,11 @@ public class FileController {
     public ResponseEntity<List<FileDto>> listFiles(
             @PathVariable(required = false) Long folderId,
             Principal principal) {
+
+        // Проверка владельца папки
+        if (folderId != null && !fileService.isFolderOwner(folderId, principal.getName())) {
+            throw new AccessDeniedException("Нет доступа к указанной папке");
+        }
 
         var files = fileService.listFiles(folderId, principal.getName());
         List<FileDto> dtos = files.stream()
@@ -68,7 +76,7 @@ public class FileController {
             Principal principal) {
 
         String newName = body.get("name");
-        var updatedFile = fileService.renameFile(id, newName, principal.getName());
+        var updatedFile = fileService.renameFile(id, newName, principal.getName()); // проверка владельца
         return ResponseEntity.ok(fileService.toDto(updatedFile));
     }
 }

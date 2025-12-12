@@ -9,7 +9,6 @@ import java.util.List;
 
 @Repository
 public interface FolderRepository extends JpaRepository<Folder, Long> {
-
     List<Folder> findAllByOwner(User owner);
     List<Folder> findAllByParent(Folder parent);
 

@@ -1,102 +1,150 @@
 package cloudStorage.server.controller;
 
+import cloudStorage.server.db.entity.File;
+import cloudStorage.server.db.entity.Folder;
+import cloudStorage.server.db.entity.User;
+import cloudStorage.server.db.jpaRepository.FileRepository;
+import cloudStorage.server.db.jpaRepository.FolderRepository;
+import cloudStorage.server.db.jpaRepository.UserRepository;
 import cloudStorage.server.model.FolderDto;
-import cloudStorage.server.service.FolderService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.springframework.http.ResponseEntity;
+import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.web.servlet.MockMvc;
 
-import java.security.Principal;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.List;
+import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.*;
+import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+@SpringBootTest
+@AutoConfigureMockMvc
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class FolderControllerTest {
 
-    @InjectMocks
-    private FolderController folderController;
+    @Autowired
+    private MockMvc mockMvc;
 
-    @Mock
-    private FolderService folderService;
+    @Autowired
+    private UserRepository userRepository;
 
-    @Mock
-    private Principal principal;
+    @Autowired
+    private FolderRepository folderRepository;
 
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
+    @Autowired
+    private FileRepository fileRepository;
+
+    private User testUser;
+
+    @BeforeAll
+    void setupUser() {
+        testUser = userRepository.findByName("testuser")
+                .orElseGet(() -> {
+                    User u = new User();
+                    u.setName("testuser");
+                    u.setPassword("password");
+                    return userRepository.save(u);
+                });
+    }
+
+    @AfterEach
+    void cleanupFolders() {
+        // рекурсивно удалить все папки пользователя
+        List<Folder> allFolders = folderRepository.findAll();
+        allFolders.forEach(folder -> deleteFolderRecursively(folder));
+    }
+    private void deleteFolderRecursively(Folder folder) {
+        // сначала удаляем файлы
+        fileRepository.findAllByFolder(folder).forEach(file -> {
+            try { Files.deleteIfExists(Paths.get(file.getS3Key())); } catch (Exception ignored) {}
+            fileRepository.delete(file);
+        });
+
+        // потом рекурсивно удаляем дочерние папки
+        folderRepository.findAllByParent(folder).forEach(this::deleteFolderRecursively);
+
+        folderRepository.delete(folder);
     }
 
     @Test
-    void createFolder_ShouldReturnCreatedFolder() {
-        FolderDto dto = new FolderDto();
-        dto.setName("New Folder");
-
-        when(principal.getName()).thenReturn("testuser");
-        when(folderService.createFolder(dto, "testuser")).thenReturn(dto);
-
-        ResponseEntity<FolderDto> response = folderController.createFolder(dto, principal);
-
-        assertThat(response.getBody()).isEqualTo(dto);
-        verify(folderService, times(1)).createFolder(dto, "testuser");
+    @WithMockUser(username = "testuser")
+    void createFolderTest() throws Exception {
+        mockMvc.perform(post("/api/folders/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"MyFolder\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("MyFolder"));
     }
 
     @Test
-    void listRootFolders_ShouldReturnFolders() {
-        FolderDto folder1 = new FolderDto();
-        folder1.setName("Folder1");
-        FolderDto folder2 = new FolderDto();
-        folder2.setName("Folder2");
+    @WithMockUser(username = "testuser")
+    void listRootFoldersTest() throws Exception {
+        Folder folder = new Folder();
+        folder.setName("RootFolder");
+        folder.setOwner(testUser);
+        folderRepository.save(folder);
 
-        when(principal.getName()).thenReturn("testuser");
-        when(folderService.listUserRootFolders("testuser")).thenReturn(List.of(folder1, folder2));
-
-        ResponseEntity<List<FolderDto>> response = folderController.listRootFolders(principal);
-
-        assertThat(response.getBody()).hasSize(2);
-        assertThat(response.getBody()).contains(folder1, folder2);
-        verify(folderService, times(1)).listUserRootFolders("testuser");
+        mockMvc.perform(get("/api/folders/root"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].name").value("RootFolder"));
     }
 
     @Test
-    void listSubfolders_ShouldReturnSubfolders() {
-        FolderDto sub1 = new FolderDto();
-        sub1.setName("Sub1");
+    @WithMockUser(username = "testuser")
+    void listSubfoldersTest() throws Exception {
+        Folder parent = new Folder();
+        parent.setName("Parent");
+        parent.setOwner(testUser);
+        parent = folderRepository.save(parent);
 
-        when(folderService.listSubFolders(1L)).thenReturn(List.of(sub1));
+        Folder child = new Folder();
+        child.setName("Child");
+        child.setOwner(testUser);
+        child.setParent(parent);
+        folderRepository.save(child);
 
-        ResponseEntity<List<FolderDto>> response = folderController.listSubfolders(1L);
-
-        assertThat(response.getBody()).hasSize(1);
-        assertThat(response.getBody().get(0).getName()).isEqualTo("Sub1");
-        verify(folderService, times(1)).listSubFolders(1L);
+        mockMvc.perform(get("/api/folders/" + parent.getId() + "/sub"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].name").value("Child"));
     }
 
     @Test
-    void deleteFolder_ShouldReturnDeletedMessage() {
-        when(principal.getName()).thenReturn("testuser");
+    @WithMockUser(username = "testuser")
+    void renameFolderTest() throws Exception {
+        Folder folder = new Folder();
+        folder.setName("OldName");
+        folder.setOwner(testUser);
+        folder = folderRepository.save(folder);
 
-        ResponseEntity<String> response = folderController.deleteFolder(1L, principal);
-
-        assertThat(response.getBody()).isEqualTo("Удалено");
-        verify(folderService, times(1)).deleteFolder(1L, "testuser");
+        mockMvc.perform(put("/api/folders/" + folder.getId() + "/rename")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"NewName\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("NewName"));
     }
 
     @Test
-    void renameFolder_ShouldReturnRenamedFolder() {
-        FolderDto dto = new FolderDto();
-        dto.setName("Renamed");
+    @WithMockUser(username = "testuser")
+    void deleteFolderTest() throws Exception {
+        Folder folder = new Folder();
+        folder.setName("ToDelete");
+        folder.setOwner(testUser);
+        folder = folderRepository.save(folder);
 
-        when(principal.getName()).thenReturn("testuser");
-        when(folderService.renameFolder(1L, "Renamed", "testuser")).thenReturn(dto);
+        mockMvc.perform(delete("/api/folders/" + folder.getId()))
+                .andExpect(status().isOk())
+                .andExpect(content().string("Удалено"));
 
-        ResponseEntity<FolderDto> response = folderController.renameFolder(1L, dto, principal);
-
-        assertThat(response.getBody().getName()).isEqualTo("Renamed");
-        verify(folderService, times(1)).renameFolder(1L, "Renamed", "testuser");
+        Optional<Folder> deleted = folderRepository.findById(folder.getId());
+        Assertions.assertTrue(deleted.isEmpty());
     }
 }
